@@ -16,7 +16,7 @@ All words displayed at once with the same timer system. Type every word back in 
 
 <img width="2560" height="1358" alt="brave_screenshot (2)" src="https://github.com/user-attachments/assets/9730104d-aded-4860-9eee-97de01fca8c8" />
 
-### 3. 🎨 Your Challenge
+### 3. Your Challenge
 Create your own : planets, capitals, vocabulary, anything. Type items, set memorise time, play.
 
 <img width="1761" height="1328" alt="brave_screenshot (3)" src="https://github.com/user-attachments/assets/6788d55b-4603-4222-9541-a36f2c78fae8" />

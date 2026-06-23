@@ -2,6 +2,8 @@
 
 Three memory games with a dark 3D-themed UI. Built with Three.js + vanilla JS.
 
+<img width="2560" height="1358" alt="brave_screenshot" src="https://github.com/user-attachments/assets/824ef2dc-d8f3-4870-a0d6-c068df48475d" />
+
 ## Games
 
 ### 1. 🔢 Remember the Numbers

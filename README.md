@@ -28,7 +28,3 @@ Open `index.html` in any browser. No build step — just serve the folder.
 ## Deploy
 
 Push to GitHub Pages, Vercel, Netlify — static HTML, zero config.
-
----
-
-Built with [Open Design](https://github.com/nexu-io/open-design).

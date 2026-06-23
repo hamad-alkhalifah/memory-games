@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Memory Games</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #0a0a0f;
+      color: #fff;
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      user-select: none;
+    }
+    #bg-canvas { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+    #app {
+      position: fixed; inset: 0; z-index: 1;
+      display: flex; align-items: center; justify-content: center;
+      overflow-y: auto; padding: 20px;
+    }
+    .page { display: none; width: 100%; max-width: 1200px; margin: auto; animation: fadeIn 0.4s ease; }
+    .page.active { display: block; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+    .glass {
+      background: rgba(255,255,255,0.04);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 20px;
+      padding: 40px;
+    }
+    #home-page { text-align: center; padding-top: 20px; }
+    #home-page h1 {
+      font-size: clamp(2.4rem,6vw,4.2rem); font-weight: 800;
+      background: linear-gradient(135deg,#f7971e,#ffd200,#f7971e);
+      background-size: 200% auto;
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text; animation: shimmer 3s linear infinite; margin-bottom: 10px;
+    }
+    #home-page p { font-size: 1.1rem; color: rgba(255,255,255,0.55); margin-bottom: 48px; }
+    .game-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px; max-width: 960px; margin: 0 auto;
+    }
+    .game-card {
+      background: rgba(255,255,255,0.04);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 20px; padding: 32px 24px; cursor: pointer;
+      transition: all 0.3s ease; position: relative; overflow: hidden;
+    }
+    .game-card::before {
+      content: ''; position: absolute; inset: 0;
+      opacity: 0; transition: opacity 0.4s ease; border-radius: 20px;
+    }
+    .game-card:nth-child(1)::before { background: radial-gradient(ellipse at 20% 50%, rgba(255,200,50,0.12), transparent 60%); }
+    .game-card:nth-child(2)::before { background: radial-gradient(ellipse at 20% 50%, rgba(0,200,255,0.12), transparent 60%); }
+    .game-card:nth-child(3)::before { background: radial-gradient(ellipse at 20% 50%, rgba(200,100,255,0.12), transparent 60%); }
+    .game-card:hover { transform: translateY(-6px) scale(1.02); border-color: rgba(255,255,255,0.18); box-shadow: 0 20px 60px rgba(0,0,0,0.4); }
+    .game-card:hover::before { opacity: 1; }
+    .game-card .icon { font-size: 3rem; margin-bottom: 16px; display: block; }
+    .game-card h3 { font-size: 1.3rem; font-weight: 700; margin-bottom: 8px; }
+    .game-card p { font-size: 0.9rem; color: rgba(255,255,255,0.5); line-height: 1.5; }
+    .card-badge { display: inline-block; padding: 4px 12px; border-radius: 100px; font-size: 0.75rem; font-weight: 600; margin-top: 12px; }
+    .card-badge.gold { background: rgba(255,200,50,0.15); color: #ffc832; }
+    .card-badge.cyan { background: rgba(0,200,255,0.15); color: #00c8ff; }
+    .card-badge.purp { background: rgba(200,100,255,0.15); color: #c864ff; }
+    .game-header {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 20px;
+    }
+    .game-header .back-btn {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1); color: #fff;
+      padding: 8px 18px; border-radius: 12px; cursor: pointer;
+      font-size: 0.9rem; font-weight: 600; transition: all 0.2s;
+    }
+    .game-header .back-btn:hover { background: rgba(255,255,255,0.12); transform: translateX(-2px); }
+    .game-header h2 { font-size: 1.5rem; font-weight: 700; }
+
+    .game-area { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+    .difficulty-set {
+      display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-bottom: 4px;
+    }
+    .diff-btn {
+      padding: 8px 20px; border-radius: 100px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.04);
+      color: rgba(255,255,255,0.6); cursor: pointer; font-weight: 600;
+      font-size: 0.85rem; transition: all 0.2s;
+    }
+    .diff-btn:hover { background: rgba(255,255,255,0.1); }
+    .diff-btn.active {
+      background: linear-gradient(135deg,#f7971e,#ffd200);
+      color: #0a0a0f; border-color: transparent;
+    }
+    .play-btn {
+      padding: 12px 36px; border-radius: 14px; border: none;
+      background: linear-gradient(135deg,#f7971e,#ffd200);
+      color: #0a0a0f; font-size: 1rem; font-weight: 700; cursor: pointer;
+      transition: all 0.3s;
+    }
+    .play-btn:hover { transform: scale(1.04); box-shadow: 0 8px 30px rgba(255,200,50,0.25); }
+
+    /* Memorize phase — show ALL items */
+    .memorize-area {
+      width: 100%; max-width: 800px;
+      background: rgba(0,0,0,0.35); border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.06);
+      padding: 24px;
+    }
+    .memorize-area .items-grid {
+      display: flex; flex-wrap: wrap; gap: 6px;
+      justify-content: center; align-items: center;
+      font-size: 1.3rem; font-weight: 300; letter-spacing: 2px;
+      line-height: 1.6;
+    }
+    .memorize-area .items-grid .item-chip {
+      display: inline-block;
+      background: rgba(255,255,255,0.05);
+      padding: 6px 12px; border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.06);
+      animation: chipPop 0.3s ease both;
+    }
+    @keyframes chipPop {
+      0% { opacity: 0; transform: scale(0.8); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+    .memorize-area .items-grid .word-chip {
+      display: inline-block;
+      background: rgba(100,200,255,0.06);
+      padding: 8px 16px; border-radius: 10px;
+      border: 1px solid rgba(100,200,255,0.1);
+      font-weight: 400; font-size: 1.1rem;
+      animation: chipPop 0.3s ease both;
+    }
+    .timer-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 16px; margin-bottom: 16px;
+    }
+    .timer-display {
+      font-size: 2.2rem; font-weight: 800; font-variant-numeric: tabular-nums;
+      background: linear-gradient(135deg,#f7971e,#ffd200);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .timer-display.warning { background: linear-gradient(135deg,#ef4444,#f97316); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .remember-btn {
+      padding: 10px 28px; border-radius: 12px; border: none;
+      background: rgba(255,255,255,0.08);
+      color: #fff; font-size: 0.95rem; font-weight: 600; cursor: pointer;
+      transition: all 0.2s;
+    }
+    .remember-btn:hover { background: rgba(255,255,255,0.16); transform: scale(1.03); }
+
+    /* Recall phase */
+    .recall-area {
+      width: 100%; max-width: 780px;
+      display: flex; flex-direction: column; gap: 16px; align-items: center;
+    }
+    .recall-inputs {
+      display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; width: 100%;
+    }
+    .recall-input {
+      width: 60px; height: 52px; text-align: center;
+      font-size: 1.3rem; font-weight: 600;
+      background: rgba(255,255,255,0.06);
+      border: 2px solid rgba(255,255,255,0.1);
+      border-radius: 10px; color: #fff; outline: none;
+      transition: all 0.2s;
+    }
+    .recall-wrapper {
+      display: flex; flex-direction: column; align-items: center; gap: 2px;
+    }
+    .answer-label {
+      font-size: 0.7rem; color: rgba(255,255,255,0.5);
+      font-weight: 500; padding: 2px 6px;
+      border-radius: 6px; background: rgba(255,255,255,0.04);
+      min-height: 1.2em;
+      transition: all 0.3s;
+    }
+    .answer-label.show { color: #fff; background: rgba(255,255,255,0.08); }
+    .recall-input:focus {
+      border-color: #f7971e;
+      box-shadow: 0 0 20px rgba(247,151,30,0.2);
+    }
+    .recall-input.correct { border-color: #22c55e; background: rgba(34,197,94,0.1); }
+    .recall-input.wrong { border-color: #ef4444; background: rgba(239,68,68,0.1); animation: shake 0.4s ease; }
+    .recall-input.word-input {
+      width: auto; min-width: 100px; padding: 0 14px; height: 52px;
+    }
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      25% { transform: translateX(-6px); }
+      75% { transform: translateX(6px); }
+    }
+    .submit-btn {
+      padding: 12px 36px; border-radius: 12px; border: none;
+      background: linear-gradient(135deg,#f7971e,#ffd200);
+      color: #0a0a0f; font-weight: 700; font-size: 1rem; cursor: pointer;
+      transition: all 0.2s;
+    }
+    .submit-btn:hover { transform: scale(1.04); }
+    .submit-btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
+
+    .result-box { text-align: center; padding: 24px; }
+    .result-box .score {
+      font-size: 3rem; font-weight: 800;
+      background: linear-gradient(135deg,#f7971e,#ffd200);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .result-box .sub { color: rgba(255,255,255,0.5); margin: 8px 0 20px; }
+    .result-box .actions { display: flex; gap: 12px; justify-content: center; }
+    .result-box .actions button {
+      padding: 10px 28px; border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.06); color: #fff; cursor: pointer; font-weight: 600;
+      transition: all 0.2s;
+    }
+    .result-box .actions button:hover { background: rgba(255,255,255,0.12); }
+    .result-box .actions button.primary {
+      background: linear-gradient(135deg,#f7971e,#ffd200);
+      color: #0a0a0f; border-color: transparent;
+    }
+
+    .custom-form {
+      display: flex; flex-direction: column; gap: 16px; width: 100%; max-width: 480px;
+    }
+    .custom-form label { font-size: 0.9rem; color: rgba(255,255,255,0.55); font-weight: 600; }
+    .custom-form input, .custom-form textarea, .custom-form select {
+      padding: 12px 16px; border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.04); color: #fff; font-size: 1rem;
+      outline: none; transition: all 0.2s;
+    }
+    .custom-form input:focus, .custom-form textarea:focus {
+      border-color: #c864ff; box-shadow: 0 0 20px rgba(200,100,255,0.15);
+    }
+    .custom-form textarea { min-height: 80px; resize: vertical; font-family: inherit; }
+
+    .settings-bar {
+      position: fixed; top: 16px; right: 20px; z-index: 10; display: flex; gap: 8px;
+    }
+    .settings-bar button {
+      width: 36px; height: 36px; border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.04); backdrop-filter: blur(12px);
+      color: rgba(255,255,255,0.5); cursor: pointer; font-size: 1.1rem;
+      transition: all 0.2s; display: flex; align-items: center; justify-content: center;
+    }
+    .settings-bar button:hover { color: #fff; border-color: rgba(255,255,255,0.15); }
+    .settings-bar button.on { color: #ffd200; }
+
+    @media (max-width: 640px) {
+      .glass { padding: 24px 16px; border-radius: 16px; }
+      .game-grid { grid-template-columns: 1fr; }
+      .game-card { padding: 24px 18px; }
+      .memorize-area { padding: 16px; }
+      .memorize-area .items-grid { font-size: 1rem; }
+      .memorize-area .items-grid .word-chip { font-size: 0.95rem; padding: 6px 12px; }
+      .timer-display { font-size: 1.8rem; }
+      .recall-input { width: 46px; height: 44px; font-size: 1.1rem; }
+      .recall-input.word-input { height: 44px; }
+    }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <canvas id="bg-canvas"></canvas>
+  <div class="settings-bar">
+    <button id="music-btn" title="Background Music">♪</button>
+    <button id="sound-btn" class="on" title="Sound Effects">🔊</button>
+  </div>
+  <div id="app">
+
+    <!-- ════ HOME ════ -->
+    <div id="home-page" class="page active">
+      <h1>Memory Games</h1>
+      <p>Challenge your brain. Pick a game.</p>
+      <div class="game-grid">
+        <div class="game-card" onclick="navigate('game1')">
+          <span class="icon">🔢</span>
+          <h3>Remember the Numbers</h3>
+          <p>See all digits at once. Timer counts down. Recall them all.</p>
+          <span class="card-badge gold">10–100 digits</span>
+        </div>
+        <div class="game-card" onclick="navigate('game2')">
+          <span class="icon">📝</span>
+          <h3>Remember the Words</h3>
+          <p>See all words at once. Timer counts down. Type them in order.</p>
+          <span class="card-badge cyan">10–100 words</span>
+        </div>
+        <div class="game-card" onclick="navigate('game3')">
+          <span class="icon">🎨</span>
+          <h3>Your Challenge</h3>
+          <p>Create your own memory challenge. You set the rules.</p>
+          <span class="card-badge purp">Customizable</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════ GAME 1 — Numbers ════ -->
+    <div id="game1-page" class="page">
+      <div class="glass">
+        <div class="game-header">
+          <button class="back-btn" onclick="navigate('home')">← Back</button>
+          <h2>🔢 Remember the Numbers</h2>
+        </div>
+        <div class="game-area">
+          <div class="difficulty-set">
+            <button class="diff-btn" data-value="10" onclick="setDiff(this,1)">10 digits</button>
+            <button class="diff-btn active" data-value="25" onclick="setDiff(this,1)">25 digits</button>
+            <button class="diff-btn" data-value="50" onclick="setDiff(this,1)">50 digits</button>
+            <button class="diff-btn" data-value="100" onclick="setDiff(this,1)">100 digits</button>
+          </div>
+
+          <div id="g1-memorize" style="display:none">
+            <div class="timer-bar">
+              <span class="timer-display" id="g1-timer">01:00</span>
+              <button class="remember-btn" id="g1-remember-btn" onclick="g1StopMemorize()">✓ I Remember</button>
+            </div>
+            <div class="memorize-area">
+              <div class="items-grid" id="g1-items"></div>
+            </div>
+          </div>
+
+          <button class="play-btn" id="g1-start-btn" onclick="g1Start()">🚀 Start Game</button>
+
+          <div id="g1-recall" class="recall-area" style="display:none">
+            <p style="color:rgba(255,255,255,0.4);font-size:0.85rem;">Now type every digit in order</p>
+            <div class="recall-inputs" id="g1-inputs"></div>
+            <button class="submit-btn" id="g1-submit" onclick="g1Check()">Check →</button>
+          </div>
+
+          <div id="g1-result" class="result-box" style="display:none"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════ GAME 2 — Words ════ -->
+    <div id="game2-page" class="page">
+      <div class="glass">
+        <div class="game-header">
+          <button class="back-btn" onclick="navigate('home')">← Back</button>
+          <h2>📝 Remember the Words</h2>
+        </div>
+        <div class="game-area">
+          <div class="difficulty-set">
+            <button class="diff-btn" data-value="10" onclick="setDiff(this,2)">10 words</button>
+            <button class="diff-btn active" data-value="25" onclick="setDiff(this,2)">25 words</button>
+            <button class="diff-btn" data-value="50" onclick="setDiff(this,2)">50 words</button>
+            <button class="diff-btn" data-value="100" onclick="setDiff(this,2)">100 words</button>
+          </div>
+
+          <div id="g2-memorize" style="display:none">
+            <div class="timer-bar">
+              <span class="timer-display" id="g2-timer">01:00</span>
+              <button class="remember-btn" id="g2-remember-btn" onclick="g2StopMemorize()">✓ I Remember</button>
+            </div>
+            <div class="memorize-area">
+              <div class="items-grid" id="g2-items"></div>
+            </div>
+          </div>
+
+          <button class="play-btn" id="g2-start-btn" onclick="g2Start()">🚀 Start Game</button>
+
+          <div id="g2-recall" class="recall-area" style="display:none">
+            <p style="color:rgba(255,255,255,0.4);font-size:0.85rem;">Type every word in the order you saw</p>
+            <div class="recall-inputs" id="g2-inputs"></div>
+            <button class="submit-btn" id="g2-submit" onclick="g2Check()">Check →</button>
+          </div>
+
+          <div id="g2-result" class="result-box" style="display:none"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════ GAME 3 — Custom ════ -->
+    <div id="game3-page" class="page">
+      <div class="glass">
+        <div class="game-header">
+          <button class="back-btn" onclick="navigate('home')">← Back</button>
+          <h2>🎨 Your Challenge</h2>
+        </div>
+        <div class="game-area">
+          <div id="g3-setup" class="custom-form">
+            <label>Challenge Title</label>
+            <input id="g3-title" placeholder="e.g. Planets in Order" value="Planets in Order">
+            <label>Items (one per line, min 3)</label>
+            <textarea id="g3-items" placeholder="Mercury&#10;Venus&#10;Earth&#10;Mars">Mercury
+Venus
+Earth
+Mars
+Jupiter
+Saturn
+Uranus
+Neptune</textarea>
+            <label>Memorize time (seconds)</label>
+            <select id="g3-speed">
+              <option value="15">15s — Insane</option>
+              <option value="30">30s — Fast</option>
+              <option value="60" selected>60s — Normal</option>
+              <option value="120">120s — Relaxed</option>
+            </select>
+            <button class="play-btn" onclick="g3Start()" style="margin-top:8px">🚀 Start Challenge</button>
+          </div>
+
+          <div id="g3-memorize" style="display:none">
+            <div class="timer-bar">
+              <span class="timer-display" id="g3-timer">01:00</span>
+              <button class="remember-btn" id="g3-remember-btn" onclick="g3StopMemorize()">✓ I Remember</button>
+            </div>
+            <div class="memorize-area">
+              <div class="items-grid" id="g3-items-display"></div>
+            </div>
+          </div>
+
+          <div id="g3-recall" class="recall-area" style="display:none">
+            <p style="color:rgba(255,255,255,0.4);font-size:0.85rem;">Type every item in order</p>
+            <div class="recall-inputs" id="g3-inputs"></div>
+            <button class="submit-btn" id="g3-submit" onclick="g3Check()">Check →</button>
+          </div>
+
+          <div id="g3-result" class="result-box" style="display:none"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ THREE.JS ════ -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+    (function(){
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 1000);
+      const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('bg-canvas'), alpha: true, antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+      const N = 420;
+      const p = new Float32Array(N*3), c = new Float32Array(N*3), s = new Float32Array(N);
+      const pals = [[1,0.78,0.2],[1,0.82,0],[0,0.78,1],[0.78,0.4,1],[1,0.5,0.2]];
+      for(let i=0;i<N;i++){
+        p[i*3]=(Math.random()-0.5)*40; p[i*3+1]=(Math.random()-0.5)*30; p[i*3+2]=(Math.random()-0.5)*30-10;
+        const pal=pals[Math.floor(Math.random()*pals.length)];
+        c[i*3]=pal[0];c[i*3+1]=pal[1];c[i*3+2]=pal[2]; s[i]=0.5+Math.random()*2;
+      }
+      const g=new THREE.BufferGeometry();
+      g.setAttribute('position',new THREE.BufferAttribute(p,3));
+      g.setAttribute('color',new THREE.BufferAttribute(c,3));
+      g.setAttribute('size',new THREE.BufferAttribute(s,1));
+      const pt=new THREE.Points(g,new THREE.PointsMaterial({size:0.15,vertexColors:true,transparent:true,opacity:0.6,blending:THREE.AdditiveBlending,sizeAttenuation:true}));
+      scene.add(pt);
+
+      const meshes=[];
+      const mcols=[0xf7971e,0xffd200,0x00c8ff,0xc864ff,0xff8032];
+      for(let i=0;i<18;i++){
+        const sh=Math.random()>0.5?new THREE.IcosahedronGeometry(0.3+Math.random()*0.4,0):new THREE.OctahedronGeometry(0.3+Math.random()*0.4,0);
+        const m=new THREE.Mesh(sh,new THREE.MeshBasicMaterial({color:mcols[i%5],transparent:true,opacity:0.12+Math.random()*0.15,wireframe:Math.random()>0.5}));
+        m.position.set((Math.random()-0.5)*30,(Math.random()-0.5)*22,(Math.random()-0.5)*20-5);
+        m.userData={rs:0.002+Math.random()*0.008,fs:0.003+Math.random()*0.005,fp:Math.random()*Math.PI*2,by:m.position.y};
+        scene.add(m); meshes.push(m);
+      }
+      const glows=[];
+      for(let i=0;i<6;i++){
+        const g2=new THREE.Mesh(new THREE.SphereGeometry(1.5+Math.random()*2.5,16,16),new THREE.MeshBasicMaterial({color:mcols[i%5],transparent:true,opacity:0.03}));
+        g2.position.set((Math.random()-0.5)*25,(Math.random()-0.5)*18,-10+Math.random()*-10);
+        scene.add(g2); glows.push(g2);
+      }
+      camera.position.z=12; let t=0;
+      function animate(){
+        requestAnimationFrame(animate); t+=0.005;
+        pt.rotation.y+=0.0006; pt.rotation.x+=0.0003;
+        for(const m of meshes){ m.rotation.x+=m.userData.rs; m.rotation.y+=m.userData.rs*0.7; m.position.y=m.userData.by+Math.sin(t*2+m.userData.fp)*0.3; }
+        for(let i=0;i<glows.length;i++){ const sc=1+Math.sin(t*0.8+i)*0.15; glows[i].scale.set(sc,sc,sc); }
+        renderer.render(scene,camera);
+      }
+      animate();
+      window.addEventListener('resize',()=>{ camera.aspect=window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth,window.innerHeight); });
+    })();
+  </script>
+
+  <script>
+    // ───── Audio ─────
+    let musicOn = false, soundOn = true;
+    const actx = new (window.AudioContext||window.webkitAudioContext)();
+    function note(f,d,t='sine',v=0.15){
+      if(!soundOn)return;
+      const o=actx.createOscillator(),g=actx.createGain();
+      o.type=t; o.frequency.value=f; g.gain.setValueAtTime(v,actx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001,actx.currentTime+d);
+      o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime+d);
+    }
+    function sndClick(){note(880,0.08,'sine',0.08);}
+    function sndComplete(){[523,659,784,1047].forEach((f,i)=>setTimeout(()=>note(f,0.2,'sine',0.1),i*150));}
+    function sndWrong(){note(200,0.25,'sawtooth',0.06);}
+
+    document.getElementById('music-btn').addEventListener('click',()=>{
+      musicOn=!musicOn;
+      document.getElementById('music-btn').classList.toggle('on',musicOn);
+      if(musicOn){
+        function lp(){if(!musicOn)return;[220,247,262,294].forEach((f,i)=>setTimeout(()=>note(f,1.5,'sine',0.02),i*2000));setTimeout(lp,8000);}
+        lp();
+      }
+    });
+    document.getElementById('sound-btn').addEventListener('click',()=>{
+      soundOn=!soundOn;
+      document.getElementById('sound-btn').classList.toggle('on',soundOn);
+    });
+
+    // ───── Navigation ─────
+    function navigate(p){
+      document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
+      if(p==='home'){document.getElementById('home-page').classList.add('active');}
+      else{document.getElementById(p+'-page').classList.add('active'); sndClick();}
+    }
+
+    function setDiff(btn,gid){
+      btn.parentElement.querySelectorAll('.diff-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+
+    // ───── Timer helpers ─────
+    const TIMES = {10:60, 25:120, 50:300, 100:600};
+    function fmtTime(s){const m=Math.floor(s/60),sec=s%60;return String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0');}
+
+    function startMemorizePhase(displayId, items, timerElId, stopFn, isWords){
+      const el=document.getElementById(displayId);
+      el.innerHTML='';
+      const grid=document.getElementById(displayId.replace('-memorize','-items'));
+      grid.innerHTML='';
+      if(isWords){
+        items.forEach((w,i)=>{
+          const span=document.createElement('span'); span.className='word-chip'; span.textContent=w; span.style.animationDelay=(i*20)+'ms';
+          grid.appendChild(span);
+        });
+      } else {
+        // Numbers — group in chunks of 5 for readability
+        for(let i=0;i<items.length;i+=5){
+          const chunk=items.slice(i,i+5).join(' ');
+          const span=document.createElement('span'); span.className='item-chip'; span.textContent=chunk; span.style.animationDelay=(i*10)+'ms';
+          grid.appendChild(span);
+        }
+      }
+    }
+
+    // ══════════════════════════════════════════
+    //  GAME 1 — NUMBERS
+    // ══════════════════════════════════════════
+    let g1Digits='', g1Timer=null, g1Remaining=0;
+
+    function g1Start(){
+      const count=parseInt(document.querySelector('#game1-page .diff-btn.active').dataset.value);
+      g1Digits='';
+      for(let i=0;i<count;i++)g1Digits+=Math.floor(Math.random()*10);
+      g1Remaining=TIMES[count];
+      document.getElementById('g1-start-btn').style.display='none';
+      document.getElementById('g1-recall').style.display='none';
+      document.getElementById('g1-result').style.display='none';
+      document.getElementById('g1-memorize').style.display='block';
+      document.getElementById('g1-timer').textContent=fmtTime(g1Remaining);
+      document.getElementById('g1-timer').className='timer-display';
+
+      g1ItemsShown(g1Digits.split(''));
+      startTimer('g1-timer',()=>g1Remaining,()=>g1Remaining,(v)=>{g1Remaining=v;},()=>g1StopMemorize());
+    }
+
+    function g1ItemsShown(digits){
+      const grid=document.getElementById('g1-items');
+      grid.innerHTML='';
+      for(let i=0;i<digits.length;i+=5){
+        const chunk=digits.slice(i,i+5).join(' ');
+        const span=document.createElement('span'); span.className='item-chip'; span.textContent=chunk; span.style.animationDelay=(i*10)+'ms';
+        grid.appendChild(span);
+      }
+    }
+
+    function g1StopMemorize(){
+      if(g1Timer){clearInterval(g1Timer);g1Timer=null;}
+      document.getElementById('g1-memorize').style.display='none';
+      document.getElementById('g1-recall').style.display='flex';
+      const container=document.getElementById('g1-inputs');
+      container.innerHTML='';
+      for(let i=0;i<g1Digits.length;i++){
+        const wrap=document.createElement('div'); wrap.className='recall-wrapper';
+        const inp=document.createElement('input');
+        inp.className='recall-input'; inp.type='text'; inp.maxLength=1;
+        inp.dataset.idx=i; inp.autocomplete='off';
+        inp.addEventListener('input',function(){
+          if(this.value.length>=this.maxLength){
+            const nxt=container.querySelector(`input[data-idx="${parseInt(this.dataset.idx)+1}"]`);
+            if(nxt)nxt.focus();
+          }
+        });
+        inp.addEventListener('keydown',function(e){
+          if(e.key==='Backspace'&&!this.value){
+            const prv=container.querySelector(`input[data-idx="${parseInt(this.dataset.idx)-1}"]`);
+            if(prv){prv.focus();prv.value='';}
+          }
+          if(e.key==='Enter'){const sb=this.closest('.recall-area').querySelector('.submit-btn');if(sb&&!sb.disabled)sb.click();}
+        });
+        const label=document.createElement('span'); label.className='answer-label'; label.id='g1-a-'+i;
+        wrap.appendChild(inp); wrap.appendChild(label);
+        container.appendChild(wrap);
+      }
+      if(container.querySelector('input'))setTimeout(()=>container.querySelector('input').focus(),100);
+    }
+
+    function g1Check(){
+      const inputs=document.querySelectorAll('#g1-inputs .recall-input');
+      let all=true;
+      inputs.forEach((inp,i)=>{
+        inp.classList.remove('correct','wrong');
+        const label=document.getElementById('g1-a-'+i);
+        if(inp.value===g1Digits[i]){inp.classList.add('correct'); label.textContent='✓'; label.className='answer-label show';}
+        else{inp.classList.add('wrong'); label.textContent=g1Digits[i]; label.className='answer-label show'; all=false;}
+        inp.disabled=true;
+      });
+      document.getElementById('g1-submit').disabled=true;
+      if(all){sndComplete();showResult('g1-result',g1Digits.length,g1Digits.length,'g1Retry');}
+      else{sndWrong();const c=document.querySelectorAll('#g1-inputs .correct').length;showResult('g1-result',c,g1Digits.length,'g1Retry');}
+    }
+
+    function g1Retry(){
+      document.getElementById('g1-start-btn').style.display='';
+      document.getElementById('g1-recall').style.display='none';
+      document.getElementById('g1-result').style.display='none';
+      document.getElementById('g1-memorize').style.display='none';
+      document.getElementById('g1-submit').disabled=false;
+    }
+
+    // ══════════════════════════════════════════
+    //  GAME 2 — WORDS
+    // ══════════════════════════════════════════
+    let g2Words=[], g2Timer=null, g2Remaining=0;
+    const WORD_POOL=[
+      'apple','bread','cloud','dream','eagle','flame','grape','heart','ivory','jewel',
+      'knife','lemon','mango','night','ocean','piano','queen','river','stone','tiger',
+      'uncle','voice','water','yacht','zebra','angel','beach','candy','dance','eager',
+      'fable','ghost','horse','image','joker','kebab','lunar','magic','noble','orbit',
+      'pixel','quilt','robot','swift','think','umbra','vivid','wheat','abbey','blaze',
+      'crane','dwarf','ember','frost','gauge','hinge','jolly','karma','lodge','mimic',
+      'nanny','olive','pouch','quota','radar','salon','tulip','ultra','vapor','waltz',
+      'amber','bloom','crisp','drum','finch','glimpse','hollow','jazz','knot','lark',
+      'mellow','niche','opal','plush','quest','ridge','satin','thorn','usher','vault',
+      'whale','yearn','zest','basil','cider','delve','flair','grove','haven','input'
+    ];
+
+    function g2Start(){
+      const count=parseInt(document.querySelector('#game2-page .diff-btn.active').dataset.value);
+      const sh=[...WORD_POOL].sort(()=>Math.random()-0.5);
+      g2Words=sh.slice(0,count);
+      g2Remaining=TIMES[count];
+      document.getElementById('g2-start-btn').style.display='none';
+      document.getElementById('g2-recall').style.display='none';
+      document.getElementById('g2-result').style.display='none';
+      document.getElementById('g2-memorize').style.display='block';
+      document.getElementById('g2-timer').textContent=fmtTime(g2Remaining);
+      document.getElementById('g2-timer').className='timer-display';
+
+      const grid=document.getElementById('g2-items');
+      grid.innerHTML='';
+      g2Words.forEach((w,i)=>{
+        const span=document.createElement('span'); span.className='word-chip'; span.textContent=w; span.style.animationDelay=(i*15)+'ms';
+        grid.appendChild(span);
+      });
+
+      startTimer('g2-timer',()=>g2Remaining,()=>g2Remaining,(v)=>{g2Remaining=v;},()=>g2StopMemorize());
+    }
+
+    function g2StopMemorize(){
+      if(g2Timer){clearInterval(g2Timer);g2Timer=null;}
+      document.getElementById('g2-memorize').style.display='none';
+      document.getElementById('g2-recall').style.display='flex';
+      const container=document.getElementById('g2-inputs');
+      container.innerHTML='';
+      for(let i=0;i<g2Words.length;i++){
+        const wrap=document.createElement('div'); wrap.className='recall-wrapper';
+        const inp=document.createElement('input');
+        inp.className='recall-input word-input'; inp.type='text'; inp.placeholder='...';
+        inp.dataset.idx=i; inp.autocomplete='off';
+        inp.addEventListener('keydown',function(e){
+          if(e.key==='Enter'){
+            const nxt=container.querySelector(`input[data-idx="${parseInt(this.dataset.idx)+1}"]`);
+            if(nxt)nxt.focus();
+            else{const sb=container.closest('.recall-area').querySelector('.submit-btn');if(sb&&!sb.disabled)sb.click();}
+          }
+        });
+        const label=document.createElement('span'); label.className='answer-label'; label.id='g2-a-'+i;
+        wrap.appendChild(inp); wrap.appendChild(label);
+        container.appendChild(wrap);
+      }
+      if(container.querySelector('input'))setTimeout(()=>container.querySelector('input').focus(),100);
+    }
+
+    function g2Check(){
+      const inputs=document.querySelectorAll('#g2-inputs .recall-input');
+      let all=true;
+      inputs.forEach((inp,i)=>{
+        inp.classList.remove('correct','wrong');
+        const label=document.getElementById('g2-a-'+i);
+        if(inp.value.trim().toLowerCase()===g2Words[i].toLowerCase()){inp.classList.add('correct'); label.textContent='✓'; label.className='answer-label show';}
+        else{inp.classList.add('wrong'); label.textContent=g2Words[i]; label.className='answer-label show'; all=false;}
+        inp.disabled=true;
+      });
+      document.getElementById('g2-submit').disabled=true;
+      if(all){sndComplete();showResult('g2-result',g2Words.length,g2Words.length,'g2Retry');}
+      else{sndWrong();const c=document.querySelectorAll('#g2-inputs .correct').length;showResult('g2-result',c,g2Words.length,'g2Retry');}
+    }
+
+    function g2Retry(){
+      document.getElementById('g2-start-btn').style.display='';
+      document.getElementById('g2-recall').style.display='none';
+      document.getElementById('g2-result').style.display='none';
+      document.getElementById('g2-memorize').style.display='none';
+      document.getElementById('g2-submit').disabled=false;
+    }
+
+    // ══════════════════════════════════════════
+    //  GAME 3 — CUSTOM
+    // ══════════════════════════════════════════
+    let g3Items=[], g3Timer=null, g3Remaining=0;
+
+    function g3Start(){
+      const raw=document.getElementById('g3-items').value.trim();
+      const items=raw.split('\n').map(s=>s.trim()).filter(s=>s.length>0);
+      if(items.length<3){alert('Enter at least 3 items!');return;}
+      const secs=parseInt(document.getElementById('g3-speed').value);
+      g3Items=items;
+      g3Remaining=secs;
+      sndClick();
+
+      document.getElementById('g3-setup').style.display='none';
+      document.getElementById('g3-memorize').style.display='block';
+      document.getElementById('g3-recall').style.display='none';
+      document.getElementById('g3-result').style.display='none';
+      document.getElementById('g3-timer').textContent=fmtTime(g3Remaining);
+      document.getElementById('g3-timer').className='timer-display';
+
+      const grid=document.getElementById('g3-items-display');
+      grid.innerHTML='';
+      g3Items.forEach((w,i)=>{
+        const span=document.createElement('span'); span.className='word-chip'; span.textContent=w; span.style.animationDelay=(i*20)+'ms';
+        grid.appendChild(span);
+      });
+
+      startTimer('g3-timer',()=>g3Remaining,()=>g3Remaining,(v)=>{g3Remaining=v;},()=>g3StopMemorize());
+    }
+
+    function g3StopMemorize(){
+      if(g3Timer){clearInterval(g3Timer);g3Timer=null;}
+      document.getElementById('g3-memorize').style.display='none';
+      document.getElementById('g3-recall').style.display='flex';
+      const container=document.getElementById('g3-inputs');
+      container.innerHTML='';
+      for(let i=0;i<g3Items.length;i++){
+        const wrap=document.createElement('div'); wrap.className='recall-wrapper';
+        const inp=document.createElement('input');
+        inp.className='recall-input word-input'; inp.type='text'; inp.placeholder='...';
+        inp.dataset.idx=i; inp.autocomplete='off';
+        inp.addEventListener('keydown',function(e){
+          if(e.key==='Enter'){
+            const nxt=container.querySelector(`input[data-idx="${parseInt(this.dataset.idx)+1}"]`);
+            if(nxt)nxt.focus();
+            else{const sb=container.closest('.recall-area').querySelector('.submit-btn');if(sb&&!sb.disabled)sb.click();}
+          }
+        });
+        const label=document.createElement('span'); label.className='answer-label'; label.id='g3-a-'+i;
+        wrap.appendChild(inp); wrap.appendChild(label);
+        container.appendChild(wrap);
+      }
+      if(container.querySelector('input'))setTimeout(()=>container.querySelector('input').focus(),100);
+    }
+
+    function g3Check(){
+      const inputs=document.querySelectorAll('#g3-inputs .recall-input');
+      let all=true;
+      inputs.forEach((inp,i)=>{
+        inp.classList.remove('correct','wrong');
+        const label=document.getElementById('g3-a-'+i);
+        if(inp.value.trim().toLowerCase()===g3Items[i].toLowerCase()){inp.classList.add('correct'); label.textContent='✓'; label.className='answer-label show';}
+        else{inp.classList.add('wrong'); label.textContent=g3Items[i]; label.className='answer-label show'; all=false;}
+        inp.disabled=true;
+      });
+      document.getElementById('g3-submit').disabled=true;
+      if(all){sndComplete();showResult('g3-result',g3Items.length,g3Items.length,'g3Retry');}
+      else{sndWrong();const c=document.querySelectorAll('#g3-inputs .correct').length;showResult('g3-result',c,g3Items.length,'g3Retry');}
+    }
+
+    function g3Retry(){
+      document.getElementById('g3-memorize').style.display='none';
+      document.getElementById('g3-recall').style.display='none';
+      document.getElementById('g3-result').style.display='none';
+      document.getElementById('g3-submit').disabled=false;
+      g3Start();
+    }
+    function g3Back(){g3Retry();document.getElementById('g3-setup').style.display='flex';}
+
+    // ───── Timer engine ─────
+    function startTimer(elId, getRemaining, _setRemaining, setRemainingCb, onExpire){
+      const el=document.getElementById(elId);
+      if(window['timer_'+elId]){clearInterval(window['timer_'+elId]);}
+      window['timer_'+elId]=setInterval(()=>{
+        let r=getRemaining();
+        r--;
+        setRemainingCb(r);
+        el.textContent=fmtTime(r);
+        if(r<=10){el.className='timer-display warning';}
+        if(r<=0){
+          clearInterval(window['timer_'+elId]);
+          window['timer_'+elId]=null;
+          onExpire();
+        }
+      },1000);
+    }
+
+    // ───── Shared result ─────
+    function showResult(containerId, got, total, retryFn){
+      const c=document.getElementById(containerId);
+      c.style.display='block';
+      const pct=Math.round((got/total)*100);
+      const emoji=pct===100?'🏆':pct>=80?'🌟':pct>=50?'💪':'🤔';
+      c.innerHTML=`
+        <div class="score">${emoji} ${got}/${total}</div>
+        <div class="sub">${pct}% accuracy</div>
+        <div class="actions">
+          <button class="primary" onclick="${retryFn}()">🔄 Try Again</button>
+          <button onclick="navigate('home')">🏠 Home</button>
+        </div>
+      `;
+    }
+  </script>
+</body>
+</html>
